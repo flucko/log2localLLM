@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log2LocalLLM Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="glass-header">
+        <div class="logo">
+            <h1>Log2LocalLLM</h1>
+            <p class="subtitle">AI-Powered Docker Error Analysis</p>
+        </div>
+        <div class="actions">
+            <button id="refresh-btn" class="btn primary">Refresh Data</button>
+            <button id="view-exclusions-btn" class="btn secondary">View Exclusions</button>
+        </div>
+    </header>
+
+    <main id="app-content">
+        <div id="loading" class="loading-state">Loading analyses...</div>
+        <div id="error-feed" class="error-grid hidden">
+            <!-- Cards will be dynamically injected here -->
+        </div>
+    </main>
+
+    <!-- Exclusions Modal -->
+    <div id="exclusion-modal" class="modal hidden">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h2>Add Exclusion Rule</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label>Container</label>
+                <input type="text" id="excl-container" readonly>
+                
+                <label>Pattern (Substring to ignore)</label>
+                <textarea id="excl-pattern" rows="3"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button id="save-exclusion" class="btn primary">Save Rule</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Exclusions Modal -->
+    <div id="active-exclusions-modal" class="modal hidden">
+        <div class="modal-content glass-card wide">
+            <div class="modal-header">
+                <h2>Active Exclusions</h2>
+                <button class="close-btn-active">&times;</button>
+            </div>
+            <div class="modal-body">
+                <ul id="exclusions-list" class="exclusions-list">
+                    <!-- Populated via JS -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

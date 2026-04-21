@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  log2localllm:
+    image: ghcr.io/username/log2localllm:latest # REPLACE username
+    # build: . # Uncomment to build locally
+    container_name: log2localllm
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./data:/app/data # For persisting the SQLite database
+    environment:
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e4b}
+      - ERROR_KEYWORDS=${ERROR_KEYWORDS:-ERROR,FATAL,Exception,CRITICAL}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
