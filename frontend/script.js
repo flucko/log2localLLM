@@ -2,6 +2,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorFeed = document.getElementById('error-feed');
     const loading = document.getElementById('loading');
     const refreshBtn = document.getElementById('refresh-btn');
+
+    // Queue panel
+    const queuePanel = document.getElementById('queue-panel');
+    const queueCount = document.getElementById('queue-count');
+    const queueList  = document.getElementById('queue-list');
+    const queuePulse = document.getElementById('queue-pulse');
     
     // Modals
     const exclModal = document.getElementById('exclusion-modal');
@@ -134,6 +140,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     refreshBtn.addEventListener('click', loadData);
 
+    async function loadQueue() {
+        try {
+            const res = await fetch('/api/queue');
+            const data = await res.json();
+            const total = data.total || 0;
+            const recent = data.recent || [];
+
+            // Toggle panel visibility
+            if (total > 0 || recent.length > 0) {
+                queuePanel.classList.remove('hidden');
+                queuePanel.classList.add('active');
+                queuePulse.classList.add('active');
+                queueCount.classList.remove('empty');
+                queueCount.textContent = `${total} pending`;
+            } else {
+                queuePanel.classList.remove('active');
+                queuePulse.classList.remove('active');
+                queueCount.classList.add('empty');
+                queueCount.textContent = '0 pending';
+                // Keep panel visible for 5 more seconds after draining
+                // then hide
+                setTimeout(() => {
+                    if (queueList.children.length === 0) {
+                        queuePanel.classList.add('hidden');
+                    }
+                }, 5000);
+            }
+
+            // Render last 5 items
+            queueList.innerHTML = '';
+            recent.forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="q-container">${escapeHtml(item.container)}</span><span class="q-line">${escapeHtml(item.line)}</span>`;
+                queueList.appendChild(li);
+            });
+        } catch (e) {
+            console.warn('Queue fetch failed:', e);
+        }
+    }
+
     function escapeHtml(unsafe) {
         if(!unsafe) return "";
         return unsafe.toString()
@@ -146,6 +192,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     loadData();
+    loadQueue();
     // Auto refresh every 30 seconds
     setInterval(loadData, 30000);
+    // Queue status every 5 seconds
+    setInterval(loadQueue, 5000);
 });

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from backend.database import SessionLocal, AnalysisResult, ExclusionRule
-from backend.log_monitor import log_monitor_worker
+from backend.log_monitor import log_monitor_worker, get_queue_status
 from sqlalchemy.orm import Session
 
 @asynccontextmanager
@@ -67,6 +67,10 @@ def add_exclusion(req: ExclusionRequest, db: Session = Depends(get_db)):
     db.add(rule)
     db.commit()
     return {"status": "ok", "message": f"Added exclusion for {req.container_name}"}
+
+@app.get("/api/queue")
+def get_queue():
+    return get_queue_status()
 
 @app.get("/api/exclusions")
 def get_exclusions(db: Session = Depends(get_db)):

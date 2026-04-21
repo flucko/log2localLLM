@@ -20,6 +20,20 @@
     </header>
 
     <main id="app-content">
+        <!-- Queue Status Panel -->
+        <section id="queue-panel" class="queue-panel hidden">
+            <div class="queue-header">
+                <div class="queue-title">
+                    <span class="pulse-dot" id="queue-pulse"></span>
+                    <span>Analysis Queue</span>
+                </div>
+                <span id="queue-count" class="queue-badge">0 pending</span>
+            </div>
+            <ul id="queue-list" class="queue-list">
+                <!-- Populated via JS -->
+            </ul>
+        </section>
+
         <div id="loading" class="loading-state">Loading analyses...</div>
         <div id="error-feed" class="error-grid hidden">
             <!-- Cards will be dynamically injected here -->

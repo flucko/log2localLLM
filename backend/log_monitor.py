@@ -1,7 +1,9 @@
 import os
 import time
+import queue
 import threading
 import docker
+from collections import deque
 from backend.database import SessionLocal, AnalysisResult, ExclusionRule
 from backend.llm_engine import analyze_error
 
@@ -10,6 +12,13 @@ ERROR_KEYWORDS = [k.strip() for k in ERROR_KEYWORDS if k.strip()]
 
 IGNORE_CONTAINERS = os.getenv("IGNORE_CONTAINERS", "log2localllm,dozzle,ollama").split(',')
 IGNORE_CONTAINERS = [c.strip() for c in IGNORE_CONTAINERS if c.strip()]
+
+# Global LLM work queue: items are (container_name, container_id, error_line)
+llm_queue: queue.Queue = queue.Queue()
+
+# Snapshot of the 5 most recently enqueued items for the API (container_name, error_line preview)
+recent_queue_items: deque = deque(maxlen=5)
+recent_queue_lock = threading.Lock()
 
 def get_docker_client():
     try:
@@ -29,7 +38,7 @@ def is_excluded(container_name, line):
     finally:
         db.close()
 
-def fetch_context_and_analyze(container_name, container_id, error_line, error_timestamp=None):
+def fetch_context_and_analyze(container_name, container_id, error_line):
     # wait 100ms to allow subsequent logs to flow into docker
     time.sleep(0.1)
     
@@ -42,8 +51,6 @@ def fetch_context_and_analyze(container_name, container_id, error_line, error_ti
         
         # Try to find the exact error line in the last 200 lines
         target_idx = -1
-        # error_line might have a timestamp prefix from our stream, strip if we are comparing
-        # Actually it's easier to just match a substring
         clean_err = error_line.split(' ', 1)[1] if 'T' in error_line[:30] else error_line
         clean_err = clean_err.strip()
         
@@ -62,10 +69,9 @@ def fetch_context_and_analyze(container_name, container_id, error_line, error_ti
     except Exception as e:
         context = f"Could not fetch context: {e}"
         
-    print(f"Found error in {container_name}, context collected. Sending to LLM...")
+    print(f"[LLM] Analyzing error from {container_name}...")
     investigation, resolution = analyze_error(container_name, error_line, context)
     
-    # Save to db
     db = SessionLocal()
     try:
         ar = AnalysisResult(
@@ -77,13 +83,39 @@ def fetch_context_and_analyze(container_name, container_id, error_line, error_ti
         )
         db.add(ar)
         db.commit()
-        print(f"Analysis saved for {container_name}")
+        print(f"[LLM] Analysis saved for {container_name}")
     finally:
         db.close()
 
+def llm_queue_worker():
+    """Single consumer thread — processes one error at a time from the queue."""
+    print("[Queue] LLM queue worker started.")
+    while True:
+        try:
+            container_name, container_id, error_line = llm_queue.get(timeout=5)
+            print(f"[Queue] Processing: {container_name} ({llm_queue.qsize()} remaining)")
+            fetch_context_and_analyze(container_name, container_id, error_line)
+        except queue.Empty:
+            continue
+        except Exception as e:
+            print(f"[Queue] Error processing item: {e}")
+        finally:
+            try:
+                llm_queue.task_done()
+            except Exception:
+                pass
+
+def get_queue_status():
+    """Returns the current queue status for the API."""
+    with recent_queue_lock:
+        preview = list(recent_queue_items)
+    return {
+        "total": llm_queue.qsize(),
+        "recent": preview  # List of {"container": ..., "line": ...}
+    }
+
 def monitor_container(container):
-    print(f"Started monitoring {container.name}")
-    client = get_docker_client()
+    print(f"[Monitor] Started monitoring {container.name}")
     try:
         buffer = ""
         for chunk in container.logs(stream=True, follow=True, timestamps=True, tail=0):
@@ -93,31 +125,35 @@ def monitor_container(container):
                 line = raw_line.strip()
                 if not line: continue
                 
-                # Check keywords first to drastically reduce DB queries
+                # Check keywords first to reduce DB queries
                 for keyword in ERROR_KEYWORDS:
                     if keyword in line:
-                        # Check exclusions only if an error is detected
+                        # Check exclusions only if error keyword matched
                         if is_excluded(container.name, line):
                             break
                         
-                        # Found error, spin off analyzer
-                        threading.Thread(
-                            target=fetch_context_and_analyze, 
-                            args=(container.name, container.id, line),
-                            daemon=True
-                        ).start()
-                        break # Don't trigger multiple times for one line
+                        # Enqueue for serial LLM processing
+                        llm_queue.put((container.name, container.id, line))
+                        with recent_queue_lock:
+                            recent_queue_items.appendleft({
+                                "container": container.name,
+                                "line": line[:120]  # truncate for display
+                            })
+                        print(f"[Queue] Enqueued error from {container.name} (queue size: {llm_queue.qsize()})")
+                        break
     except Exception as e:
-        print(f"Stopped monitoring {container.name}: {e}")
+        print(f"[Monitor] Stopped monitoring {container.name}: {e}")
 
 def log_monitor_worker():
     client = get_docker_client()
     if not client: 
         print("Cannot start log monitor. No docker client.")
         return
-        
+
+    # Start the single LLM consumer thread
+    threading.Thread(target=llm_queue_worker, daemon=True, name="llm-queue-worker").start()
+
     monitored_ids = set()
-    
     while True:
         try:
             containers = client.containers.list()
@@ -128,6 +164,6 @@ def log_monitor_worker():
                     monitored_ids.add(c.id)
                     threading.Thread(target=monitor_container, args=(c,), daemon=True).start()
         except Exception as e:
-            print(f"Error listing containers: {e}")
+            print(f"[Monitor] Error listing containers: {e}")
             
-        time.sleep(10) # check for new containers every 10 seconds
+        time.sleep(10)

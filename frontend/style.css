@@ -306,3 +306,113 @@ main {
 .exclusions-list li strong {
     color: #93c5fd;
 }
+
+/* Queue Panel */
+.queue-panel {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(234, 179, 8, 0.25);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 2rem;
+    transition: border-color 0.3s ease;
+}
+
+.queue-panel.active {
+    border-color: rgba(234, 179, 8, 0.6);
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.08);
+}
+
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.queue-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.queue-badge {
+    background: rgba(234, 179, 8, 0.15);
+    color: #fbbf24;
+    padding: 0.2rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 90px;
+    text-align: center;
+    transition: background 0.3s ease;
+}
+
+.queue-badge.empty {
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-muted);
+}
+
+.pulse-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #64748b;
+    display: inline-block;
+    flex-shrink: 0;
+    transition: background 0.3s ease;
+}
+
+.pulse-dot.active {
+    background: #fbbf24;
+    animation: pulse-anim 1.5s infinite;
+}
+
+@keyframes pulse-anim {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(1.4); }
+}
+
+.queue-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.queue-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    border-left: 2px solid rgba(234, 179, 8, 0.3);
+    padding-left: 0.75rem;
+    animation: fadeSlideIn 0.3s ease;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.queue-list li .q-container {
+    color: #fbbf24;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.queue-list li .q-line {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: monospace;
+}
+
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
