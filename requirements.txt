@@ -1,4 +1,4 @@
 fastapi[all]==0.110.0
-docker==7.0.0
+docker>=7.1.0
 SQLAlchemy==2.0.28
 ollama==0.1.7
