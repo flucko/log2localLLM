@@ -5,8 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 
-from database import SessionLocal, AnalysisResult, ExclusionRule
-from log_monitor import log_monitor_worker
+from backend.database import SessionLocal, AnalysisResult, ExclusionRule
+from backend.log_monitor import log_monitor_worker
 from sqlalchemy.orm import Session
 
 @asynccontextmanager

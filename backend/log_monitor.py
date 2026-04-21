@@ -2,8 +2,8 @@ import os
 import time
 import threading
 import docker
-from database import SessionLocal, AnalysisResult, ExclusionRule
-from llm_engine import analyze_error
+from backend.database import SessionLocal, AnalysisResult, ExclusionRule
+from backend.llm_engine import analyze_error
 
 ERROR_KEYWORDS = os.getenv("ERROR_KEYWORDS", "ERROR,FATAL,Exception,CRITICAL").split(',')
 ERROR_KEYWORDS = [k.strip() for k in ERROR_KEYWORDS if k.strip()]
