@@ -188,6 +188,35 @@ h1 {
     color: #e2e8f0;
 }
 
+/* ── Window range & signal chips ────────────────────────────────────────── */
+.window-range {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.01em;
+}
+
+.signal-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+}
+
+.signal-chip {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    border-radius: 99px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.signal-chip.signal-rate-spike       { background: rgba(239,68,68,0.15);   color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+.signal-chip.signal-new-fingerprint  { background: rgba(99,102,241,0.15);  color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3); }
+.signal-chip.signal-fatal-critical   { background: rgba(239,68,68,0.25);   color: #f87171; border: 1px solid rgba(239,68,68,0.5); }
+.signal-chip.signal-sustained-repetition { background: rgba(234,179,8,0.15); color: #fbbf24; border: 1px solid rgba(234,179,8,0.3); }
+
 /* ── Executive Summary ───────────────────────────────────────────────────── */
 .executive-summary {
     display: flex;

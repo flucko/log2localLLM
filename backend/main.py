@@ -11,15 +11,12 @@ from sqlalchemy.orm import Session
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start background worker
     worker_thread = threading.Thread(target=log_monitor_worker, daemon=True)
     worker_thread.start()
     yield
-    # Cleanup if needed
 
 app = FastAPI(lifespan=lifespan)
 
-# Dependency
 def get_db():
     db = SessionLocal()
     try:
@@ -27,7 +24,6 @@ def get_db():
     finally:
         db.close()
 
-# Pydantic models
 class AnalysisResponse(BaseModel):
     id: int
     container_name: str
@@ -37,6 +33,11 @@ class AnalysisResponse(BaseModel):
     llm_executive_summary: str
     llm_investigation: str
     llm_resolution: str
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
+    signal_types: Optional[str] = None
+    error_count: Optional[int] = None
+    fingerprint_count: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -54,11 +55,16 @@ def get_analyses(limit: int = 50, db: Session = Depends(get_db)):
             id=r.id,
             container_name=r.container_name,
             timestamp=r.timestamp.isoformat() + "Z",
-            error_line=r.error_line,
-            context_log=r.context_log,
+            error_line=r.error_line or "",
+            context_log=r.context_log or "",
             llm_executive_summary=r.llm_executive_summary or "",
-            llm_investigation=r.llm_investigation,
-            llm_resolution=r.llm_resolution
+            llm_investigation=r.llm_investigation or "",
+            llm_resolution=r.llm_resolution or "",
+            window_start=r.window_start.isoformat() + "Z" if r.window_start else None,
+            window_end=r.window_end.isoformat() + "Z" if r.window_end else None,
+            signal_types=r.signal_types or "",
+            error_count=r.error_count,
+            fingerprint_count=r.fingerprint_count,
         ))
     return formatted
 
@@ -93,7 +99,6 @@ def get_exclusions(db: Session = Depends(get_db)):
     rules = db.query(ExclusionRule).all()
     return [{"id": r.id, "container_name": r.container_name, "pattern": r.pattern} for r in rules]
 
-# Mount frontend
 import os
 frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 os.makedirs(frontend_dir, exist_ok=True)

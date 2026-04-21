@@ -95,12 +95,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = new Date(data.timestamp).toLocaleString();
         const meta = getSummaryMeta(data.llm_executive_summary);
 
+        const signalChips = (data.signal_types || '')
+            .split(',')
+            .filter(Boolean)
+            .map(s => `<span class="signal-chip signal-${s.toLowerCase().replace('_', '-')}">${escapeHtml(s.replace('_', ' '))}</span>`)
+            .join('');
+
+        const windowRange = (data.window_start && data.window_end)
+            ? (() => {
+                const fmt = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const cnt = data.error_count != null ? ` · ${data.error_count} errors` : '';
+                const cls = data.fingerprint_count != null ? ` · ${data.fingerprint_count} clusters` : '';
+                return `<div class="window-range">${fmt(data.window_start)} → ${fmt(data.window_end)}${cnt}${cls}</div>`;
+            })()
+            : '';
+
         div.innerHTML = `
             <div class="card-header">
                 <span class="container-badge">${escapeHtml(data.container_name)}</span>
                 <span class="timestamp">${date}</span>
             </div>
-            <div class="error-snippet">${escapeHtml(data.error_line)}</div>
+            ${windowRange}
+            ${signalChips ? `<div class="signal-chips">${signalChips}</div>` : `<div class="error-snippet">${escapeHtml(data.error_line)}</div>`}
             <div class="executive-summary ${meta.cls}">
                 <span class="exec-icon">${meta.icon}</span>
                 <span class="exec-label">${meta.label}</span>
@@ -115,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const cc = div.querySelector('.collapsibles-container');
         cc.appendChild(createCollapsible(
-            'Context <span class="toggle-hint">(+/- 100ms)</span>',
+            'Cluster Summary',
             `<div class="context-box">${escapeHtml(data.context_log)}</div>`
         ));
         cc.appendChild(createCollapsible(
@@ -143,9 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         div.querySelector('.exclude-action-btn').addEventListener('click', () => {
             exclContainerInput.value = data.container_name;
-            let line = data.error_line;
-            if (line.includes('Z ')) line = line.split('Z ')[1];
-            exclPatternInput.value = line;
+            exclPatternInput.value = '';
             exclModal.classList.remove('hidden');
         });
 
@@ -317,26 +331,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Queue polling (no-flicker) ────────────────────────────────────────
     async function loadQueue() {
         try {
-            const data   = await fetch('/api/queue').then(r => r.json());
-            const total  = data.total || 0;
-            const recent = data.recent || [];
+            const data    = await fetch('/api/queue').then(r => r.json());
+            const windows = data.active_windows || [];
 
-            // Change-detect to avoid unnecessary DOM thrashing
-            const key = total + '|' + recent.map(i => i.container + i.line).join('|');
+            const key = windows.map(w => w.container + w.error_count).join('|');
             if (key === lastQueueKey) return;
             lastQueueKey = key;
 
-            if (total > 0) {
+            if (windows.length > 0) {
                 queuePanel.classList.remove('hidden');
                 queuePanel.classList.add('active');
                 queuePulse.classList.add('active');
                 queueCount.classList.remove('empty');
-                queueCount.textContent = `${total} pending`;
+                queueCount.textContent = `${windows.length} active`;
 
                 queueList.innerHTML = '';
-                recent.forEach(item => {
+                windows.forEach(w => {
+                    const mins = Math.ceil(w.seconds_remaining / 60);
                     const li = document.createElement('li');
-                    li.innerHTML = `<span class="q-container">${escapeHtml(item.container)}</span><span class="q-line">${escapeHtml(item.line)}</span>`;
+                    li.innerHTML = `<span class="q-container">${escapeHtml(w.container)}</span>`
+                        + `<span class="q-line">${w.error_count} errors · ${w.fingerprint_count} clusters · ${mins}m left</span>`;
                     queueList.appendChild(li);
                 });
             } else {
