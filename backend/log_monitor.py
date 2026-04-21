@@ -18,12 +18,16 @@ def get_docker_client():
         print(f"Failed to connect to docker: {e}")
         return None
 
-def is_excluded(db, container_name, line):
-    rules = db.query(ExclusionRule).filter(ExclusionRule.container_name == container_name).all()
-    for rule in rules:
-        if rule.pattern in line:
-            return True
-    return False
+def is_excluded(container_name, line):
+    db = SessionLocal()
+    try:
+        rules = db.query(ExclusionRule).filter(ExclusionRule.container_name == container_name).all()
+        for rule in rules:
+            if rule.pattern in line:
+                return True
+        return False
+    finally:
+        db.close()
 
 def fetch_context_and_analyze(container_name, container_id, error_line, error_timestamp=None):
     # wait 100ms to allow subsequent logs to flow into docker
@@ -79,31 +83,32 @@ def fetch_context_and_analyze(container_name, container_id, error_line, error_ti
 
 def monitor_container(container):
     print(f"Started monitoring {container.name}")
-    db = SessionLocal()
     client = get_docker_client()
     try:
+        buffer = ""
         for chunk in container.logs(stream=True, follow=True, timestamps=True, tail=0):
-            line = chunk.decode('utf-8', errors='replace').strip()
-            if not line: continue
-            
-            # Check exclusions
-            if is_excluded(db, container.name, line):
-                continue
+            buffer += chunk.decode('utf-8', errors='replace')
+            while '\n' in buffer:
+                raw_line, buffer = buffer.split('\n', 1)
+                line = raw_line.strip()
+                if not line: continue
                 
-            # Check keywords
-            for keyword in ERROR_KEYWORDS:
-                if keyword in line:
-                    # Found error, spin off analyzer
-                    threading.Thread(
-                        target=fetch_context_and_analyze, 
-                        args=(container.name, container.id, line),
-                        daemon=True
-                    ).start()
-                    break # Don't trigger multiple times for one line
+                # Check keywords first to drastically reduce DB queries
+                for keyword in ERROR_KEYWORDS:
+                    if keyword in line:
+                        # Check exclusions only if an error is detected
+                        if is_excluded(container.name, line):
+                            break
+                        
+                        # Found error, spin off analyzer
+                        threading.Thread(
+                            target=fetch_context_and_analyze, 
+                            args=(container.name, container.id, line),
+                            daemon=True
+                        ).start()
+                        break # Don't trigger multiple times for one line
     except Exception as e:
         print(f"Stopped monitoring {container.name}: {e}")
-    finally:
-        db.close()
 
 def log_monitor_worker():
     client = get_docker_client()
