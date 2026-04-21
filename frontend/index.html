@@ -20,26 +20,50 @@
         </div>
     </header>
 
-    <main id="app-content">
-        <!-- Queue Status Panel -->
-        <section id="queue-panel" class="queue-panel hidden">
-            <div class="queue-header">
-                <div class="queue-title">
-                    <span class="pulse-dot" id="queue-pulse"></span>
-                    <span>Analysis Queue</span>
-                </div>
-                <span id="queue-count" class="queue-badge">0 pending</span>
+    <div id="page-body">
+        <!-- Filter Sidebar -->
+        <aside id="filter-panel" class="glass-card filter-panel">
+            <div class="filter-section">
+                <div class="filter-heading">Status</div>
+                <label class="filter-chip">
+                    <input type="checkbox" class="type-filter" value="intervention" checked>
+                    <span class="chip intervention">Needs Intervention</span>
+                </label>
+                <label class="filter-chip">
+                    <input type="checkbox" class="type-filter" value="transient" checked>
+                    <span class="chip transient">Likely Transient</span>
+                </label>
+                <label class="filter-chip">
+                    <input type="checkbox" class="type-filter" value="unknown" checked>
+                    <span class="chip unknown">Analyzed</span>
+                </label>
             </div>
-            <ul id="queue-list" class="queue-list">
-                <!-- Populated via JS -->
-            </ul>
-        </section>
+            <div class="filter-section">
+                <div class="filter-heading">Containers</div>
+                <div id="container-filters">
+                    <span class="filter-empty">No data yet</span>
+                </div>
+            </div>
+        </aside>
 
-        <div id="loading" class="loading-state">Loading analyses...</div>
-        <div id="error-feed" class="error-grid hidden">
-            <!-- Cards will be dynamically injected here -->
-        </div>
-    </main>
+        <!-- Main content -->
+        <main id="main-content">
+            <!-- Queue Status Panel -->
+            <section id="queue-panel" class="queue-panel hidden">
+                <div class="queue-header">
+                    <div class="queue-title">
+                        <span class="pulse-dot" id="queue-pulse"></span>
+                        <span>Analysis Queue</span>
+                    </div>
+                    <span id="queue-count" class="queue-badge">0 pending</span>
+                </div>
+                <ul id="queue-list" class="queue-list"></ul>
+            </section>
+
+            <div id="loading" class="loading-state">Loading analyses...</div>
+            <div id="error-feed" class="error-grid hidden"></div>
+        </main>
+    </div>
 
     <!-- Exclusions Modal -->
     <div id="exclusion-modal" class="modal hidden">
@@ -51,7 +75,6 @@
             <div class="modal-body">
                 <label>Container</label>
                 <input type="text" id="excl-container" readonly>
-                
                 <label>Pattern (Substring to ignore)</label>
                 <textarea id="excl-pattern" rows="3"></textarea>
             </div>
@@ -69,9 +92,7 @@
                 <button class="close-btn-active">&times;</button>
             </div>
             <div class="modal-body">
-                <ul id="exclusions-list" class="exclusions-list">
-                    <!-- Populated via JS -->
-                </ul>
+                <ul id="exclusions-list" class="exclusions-list"></ul>
             </div>
         </div>
     </div>

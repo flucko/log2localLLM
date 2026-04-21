@@ -1,114 +1,82 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const errorFeed = document.getElementById('error-feed');
-    const loading = document.getElementById('loading');
-    const refreshBtn = document.getElementById('refresh-btn');
+    const errorFeed   = document.getElementById('error-feed');
+    const loading     = document.getElementById('loading');
+    const refreshBtn  = document.getElementById('refresh-btn');
     const clearAllBtn = document.getElementById('clear-all-btn');
 
-    // Queue panel
-    const queuePanel = document.getElementById('queue-panel');
-    const queueCount = document.getElementById('queue-count');
-    const queueList  = document.getElementById('queue-list');
-    const queuePulse = document.getElementById('queue-pulse');
-    
-    // Modals
-    const exclModal = document.getElementById('exclusion-modal');
+    const queuePanel  = document.getElementById('queue-panel');
+    const queueCount  = document.getElementById('queue-count');
+    const queueList   = document.getElementById('queue-list');
+    const queuePulse  = document.getElementById('queue-pulse');
+
+    const exclModal         = document.getElementById('exclusion-modal');
     const exclContainerInput = document.getElementById('excl-container');
-    const exclPatternInput = document.getElementById('excl-pattern');
-    const saveExclBtn = document.getElementById('save-exclusion');
-    
-    const activeExclModal = document.getElementById('active-exclusions-modal');
-    const exclusionsList = document.getElementById('exclusions-list');
+    const exclPatternInput  = document.getElementById('excl-pattern');
+    const saveExclBtn       = document.getElementById('save-exclusion');
+    const activeExclModal   = document.getElementById('active-exclusions-modal');
+    const exclusionsList    = document.getElementById('exclusions-list');
+    const containerFilters  = document.getElementById('container-filters');
 
-    // Close buttons
-    document.querySelectorAll('.close-btn').forEach(btn => {
-        btn.addEventListener('click', () => exclModal.classList.add('hidden'));
-    });
-    document.querySelectorAll('.close-btn-active').forEach(btn => {
-        btn.addEventListener('click', () => activeExclModal.classList.add('hidden'));
-    });
+    document.querySelectorAll('.close-btn').forEach(b =>
+        b.addEventListener('click', () => exclModal.classList.add('hidden')));
+    document.querySelectorAll('.close-btn-active').forEach(b =>
+        b.addEventListener('click', () => activeExclModal.classList.add('hidden')));
 
-    // ── Markdown renderer ──────────────────────────────────────────────────
+    // ── State ─────────────────────────────────────────────────────────────
+    const knownCards = new Map();       // id -> DOM element
+    let activeContainers = new Set();   // containers currently checked
+    let lastQueueKey = '';              // change-detection for queue
+
+    // ── Markdown renderer ─────────────────────────────────────────────────
     function renderMarkdown(text) {
         if (!text) return '';
         let html = escapeHtml(text);
-        // bold: **text**
         html = html.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
-        // italic: *text* (single, not already consumed above)
         html = html.replace(/(?<!\*)\*(?!\*)([\s\S]+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-        // headings: lines starting with ## or #
         html = html.replace(/^#{2}\s+(.+)$/gm, '<h4>$1</h4>');
         html = html.replace(/^#{1}\s+(.+)$/gm, '<h3>$1</h3>');
-        // numbered list items
         html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-        // bullet points
         html = html.replace(/^[\*\-]\s+(.+)$/gm, '<li>$1</li>');
-        // Wrap consecutive <li> in <ul>
-        html = html.replace(/(<li>[\s\S]*?<\/li>)(\s*<li>)/g, '$1$2');
         html = html.replace(/((?:<li>.*<\/li>\s*)+)/g, '<ul>$1</ul>');
-        // line breaks
         html = html.replace(/\n\n/g, '</p><p>');
         html = html.replace(/\n/g, '<br>');
         return `<p>${html}</p>`;
     }
 
-    // ── Data loading ───────────────────────────────────────────────────────
-    async function loadData() {
-        loading.classList.remove('hidden');
-        errorFeed.classList.add('hidden');
-        errorFeed.innerHTML = '';
-
-        try {
-            const res = await fetch('/api/analyses');
-            const data = await res.json();
-            
-            if (data.length === 0) {
-                loading.textContent = "No errors detected — all quiet!";
-                return;
-            }
-
-            data.forEach(item => {
-                const card = createErrorCard(item);
-                errorFeed.appendChild(card);
-            });
-
-            loading.classList.add('hidden');
-            errorFeed.classList.remove('hidden');
-        } catch (e) {
-            loading.textContent = "Error loading data.";
-            console.error(e);
-        }
+    // ── Summary helpers ───────────────────────────────────────────────────
+    function normaliseSummary(raw) {
+        // LLM sometimes wraps the whole thing in **…**, strip those
+        return (raw || '').replace(/^\*+\s*/, '').replace(/\s*\*+$/, '').trim();
     }
 
-    // ── Card builder ───────────────────────────────────────────────────────
-    function getSummaryMeta(summary) {
-        const text = (summary || '').toUpperCase();
-        if (text.startsWith('NEEDS INTERVENTION')) {
-            return { cls: 'summary-intervention', label: 'NEEDS INTERVENTION', icon: '⚠' };
-        }
-        if (text.startsWith('LIKELY TRANSIENT')) {
-            return { cls: 'summary-transient', label: 'LIKELY TRANSIENT', icon: '✓' };
-        }
-        return { cls: 'summary-unknown', label: 'ANALYZED', icon: '·' };
+    function getSummaryMeta(raw) {
+        const text = normaliseSummary(raw).toUpperCase();
+        if (text.startsWith('NEEDS INTERVENTION'))
+            return { cls: 'summary-intervention', label: 'NEEDS INTERVENTION', icon: '⚠', type: 'intervention' };
+        if (text.startsWith('LIKELY TRANSIENT'))
+            return { cls: 'summary-transient', label: 'LIKELY TRANSIENT', icon: '✓', type: 'transient' };
+        return { cls: 'summary-unknown', label: 'ANALYZED', icon: '·', type: 'unknown' };
     }
 
-    function makeSummaryBody(summary) {
-        if (!summary) return '<em>No summary available.</em>';
-        // Strip the leading status prefix to avoid duplication
-        const clean = summary.replace(/^(NEEDS INTERVENTION|LIKELY TRANSIENT)\s*:\s*/i, '');
+    function makeSummaryBody(raw) {
+        if (!raw) return '<em>No summary available.</em>';
+        const clean = normaliseSummary(raw)
+            .replace(/^(NEEDS INTERVENTION|LIKELY TRANSIENT)\s*:\s*/i, '');
         return escapeHtml(clean);
     }
 
-    function createCollapsible(titleHtml, contentHtml, extraClass = '') {
+    // ── Collapsible helper ────────────────────────────────────────────────
+    function createCollapsible(titleHtml, contentHtml) {
         const wrap = document.createElement('div');
         wrap.className = 'collapsible-section';
         wrap.innerHTML = `
-            <button class="collapsible-toggle${extraClass ? ' ' + extraClass : ''}">
+            <button class="collapsible-toggle">
                 <span class="toggle-arrow">▶</span>${titleHtml}
             </button>
             <div class="collapsible-body hidden">${contentHtml}</div>
         `;
         wrap.querySelector('.collapsible-toggle').addEventListener('click', () => {
-            const body = wrap.querySelector('.collapsible-body');
+            const body  = wrap.querySelector('.collapsible-body');
             const arrow = wrap.querySelector('.toggle-arrow');
             body.classList.toggle('hidden');
             arrow.textContent = body.classList.contains('hidden') ? '▶' : '▼';
@@ -116,10 +84,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return wrap;
     }
 
+    // ── Card builder ──────────────────────────────────────────────────────
     function createErrorCard(data) {
-        const div = document.createElement('div');
+        const div  = document.createElement('div');
         div.className = 'glass-card';
-        div.dataset.id = data.id;
+        div.dataset.id   = data.id;
+        div.dataset.type = getSummaryMeta(data.llm_executive_summary).type;
+        div.dataset.container = data.container_name;
 
         const date = new Date(data.timestamp).toLocaleString();
         const meta = getSummaryMeta(data.llm_executive_summary);
@@ -129,34 +100,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="container-badge">${escapeHtml(data.container_name)}</span>
                 <span class="timestamp">${date}</span>
             </div>
-
             <div class="error-snippet">${escapeHtml(data.error_line)}</div>
-
             <div class="executive-summary ${meta.cls}">
                 <span class="exec-icon">${meta.icon}</span>
                 <span class="exec-label">${meta.label}</span>
                 <span class="exec-body">${makeSummaryBody(data.llm_executive_summary)}</span>
             </div>
-
             <div class="collapsibles-container"></div>
-
             <div class="card-actions">
                 <button class="btn resolve resolve-btn">✓ Resolve</button>
                 <button class="btn danger exclude-action-btn">Exclude Pattern</button>
             </div>
         `;
 
-        const container = div.querySelector('.collapsibles-container');
-
-        container.appendChild(createCollapsible(
+        const cc = div.querySelector('.collapsibles-container');
+        cc.appendChild(createCollapsible(
             'Context <span class="toggle-hint">(+/- 100ms)</span>',
             `<div class="context-box">${escapeHtml(data.context_log)}</div>`
         ));
-        container.appendChild(createCollapsible(
+        cc.appendChild(createCollapsible(
             'Investigation',
             `<div class="content-box llm-investigation">${renderMarkdown(data.llm_investigation)}</div>`
         ));
-        container.appendChild(createCollapsible(
+        cc.appendChild(createCollapsible(
             'Resolution',
             `<div class="content-box llm-resolution">${renderMarkdown(data.llm_resolution)}</div>`
         ));
@@ -167,16 +133,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 div.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
                 div.style.opacity = '0';
                 div.style.transform = 'translateY(-8px)';
-                setTimeout(() => div.remove(), 300);
-            } catch (e) {
-                console.error('Failed to resolve:', e);
-            }
+                setTimeout(() => {
+                    knownCards.delete(data.id);
+                    div.remove();
+                    refreshContainerFilter();
+                }, 300);
+            } catch (e) { console.error('Failed to resolve:', e); }
         });
 
         div.querySelector('.exclude-action-btn').addEventListener('click', () => {
             exclContainerInput.value = data.container_name;
             let line = data.error_line;
-            if (line.includes("Z ")) line = line.split("Z ")[1];
+            if (line.includes('Z ')) line = line.split('Z ')[1];
             exclPatternInput.value = line;
             exclModal.classList.remove('hidden');
         });
@@ -184,32 +152,139 @@ document.addEventListener('DOMContentLoaded', () => {
         return div;
     }
 
-    // ── Clear All ──────────────────────────────────────────────────────────
+    // ── Incremental data load ─────────────────────────────────────────────
+    async function loadData() {
+        try {
+            const res  = await fetch('/api/analyses');
+            const data = await res.json();
+
+            if (data.length === 0) {
+                knownCards.forEach(el => el.remove());
+                knownCards.clear();
+                errorFeed.classList.add('hidden');
+                loading.classList.remove('hidden');
+                loading.textContent = 'No errors detected — all quiet!';
+                refreshContainerFilter();
+                return;
+            }
+
+            loading.classList.add('hidden');
+            errorFeed.classList.remove('hidden');
+
+            const incomingIds = new Set(data.map(d => d.id));
+
+            // Remove cards no longer in the API response
+            knownCards.forEach((el, id) => {
+                if (!incomingIds.has(id)) {
+                    el.remove();
+                    knownCards.delete(id);
+                }
+            });
+
+            // Prepend new cards (newest first in API, so iterate reversed to keep order)
+            [...data].reverse().forEach(item => {
+                if (!knownCards.has(item.id)) {
+                    const card = createErrorCard(item);
+                    errorFeed.prepend(card);
+                    knownCards.set(item.id, card);
+                }
+            });
+
+            refreshContainerFilter();
+            applyFilters();
+        } catch (e) {
+            loading.textContent = 'Error loading data.';
+            console.error(e);
+        }
+    }
+
+    // ── Filter logic ──────────────────────────────────────────────────────
+    function getActiveTypes() {
+        return new Set(
+            [...document.querySelectorAll('.type-filter:checked')].map(c => c.value)
+        );
+    }
+
+    function applyFilters() {
+        const activeTypes = getActiveTypes();
+        knownCards.forEach(card => {
+            const typeMatch      = activeTypes.has(card.dataset.type);
+            const containerMatch = activeContainers.size === 0 ||
+                                   activeContainers.has(card.dataset.container);
+            card.classList.toggle('hidden', !(typeMatch && containerMatch));
+        });
+    }
+
+    function refreshContainerFilter() {
+        const names = new Set();
+        knownCards.forEach(card => names.add(card.dataset.container));
+
+        // Preserve checked state
+        const checked = new Set(
+            [...containerFilters.querySelectorAll('input:checked')].map(i => i.value)
+        );
+
+        containerFilters.innerHTML = '';
+        if (names.size === 0) {
+            containerFilters.innerHTML = '<span class="filter-empty">No data yet</span>';
+            activeContainers = new Set();
+            return;
+        }
+
+        names.forEach(name => {
+            const isChecked = checked.size === 0 || checked.has(name); // default: all on
+            const label = document.createElement('label');
+            label.className = 'filter-chip';
+            label.innerHTML = `
+                <input type="checkbox" class="container-filter" value="${escapeHtml(name)}"
+                    ${isChecked ? 'checked' : ''}>
+                <span class="chip container-chip">${escapeHtml(name)}</span>
+            `;
+            label.querySelector('input').addEventListener('change', () => {
+                activeContainers = new Set(
+                    [...containerFilters.querySelectorAll('input:checked')].map(i => i.value)
+                );
+                applyFilters();
+            });
+            containerFilters.appendChild(label);
+        });
+
+        activeContainers = new Set(
+            [...containerFilters.querySelectorAll('input:checked')].map(i => i.value)
+        );
+    }
+
+    document.querySelectorAll('.type-filter').forEach(cb =>
+        cb.addEventListener('change', applyFilters)
+    );
+
+    // ── Clear All ─────────────────────────────────────────────────────────
     clearAllBtn.addEventListener('click', async () => {
         if (!confirm('Clear all analyzed errors? This cannot be undone.')) return;
         try {
             await fetch('/api/analyses', { method: 'DELETE' });
-            errorFeed.innerHTML = '';
+            knownCards.forEach(el => el.remove());
+            knownCards.clear();
             errorFeed.classList.add('hidden');
             loading.classList.remove('hidden');
-            loading.textContent = "No errors detected — all quiet!";
+            loading.textContent = 'No errors detected — all quiet!';
+            refreshContainerFilter();
         } catch (e) {
             alert('Failed to clear errors.');
             console.error(e);
         }
     });
 
-    // ── Exclusion save ─────────────────────────────────────────────────────
+    // ── Exclusion save ────────────────────────────────────────────────────
     saveExclBtn.addEventListener('click', async () => {
-        const cname = exclContainerInput.value;
+        const cname   = exclContainerInput.value;
         const pattern = exclPatternInput.value;
         if (!pattern) return;
-
         try {
             await fetch('/api/exclusions', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({container_name: cname, pattern: pattern})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_name: cname, pattern })
             });
             exclModal.classList.add('hidden');
             alert('Exclusion saved!');
@@ -219,12 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ── View Exclusions ────────────────────────────────────────────────────
+    // ── View Exclusions ───────────────────────────────────────────────────
     document.getElementById('view-exclusions-btn').addEventListener('click', async () => {
         try {
-            const res = await fetch('/api/exclusions');
-            const data = await res.json();
-            
+            const data = await fetch('/api/exclusions').then(r => r.json());
             exclusionsList.innerHTML = '';
             if (data.length === 0) {
                 exclusionsList.innerHTML = '<li>No active exclusions.</li>';
@@ -236,20 +309,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
             activeExclModal.classList.remove('hidden');
-        } catch(e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     });
 
     refreshBtn.addEventListener('click', loadData);
 
-    // ── Queue polling ──────────────────────────────────────────────────────
+    // ── Queue polling (no-flicker) ────────────────────────────────────────
     async function loadQueue() {
         try {
-            const res = await fetch('/api/queue');
-            const data = await res.json();
-            const total = data.total || 0;
+            const data   = await fetch('/api/queue').then(r => r.json());
+            const total  = data.total || 0;
             const recent = data.recent || [];
+
+            // Change-detect to avoid unnecessary DOM thrashing
+            const key = total + '|' + recent.map(i => i.container + i.line).join('|');
+            if (key === lastQueueKey) return;
+            lastQueueKey = key;
 
             if (total > 0) {
                 queuePanel.classList.remove('hidden');
@@ -257,6 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 queuePulse.classList.add('active');
                 queueCount.classList.remove('empty');
                 queueCount.textContent = `${total} pending`;
+
                 queueList.innerHTML = '';
                 recent.forEach(item => {
                     const li = document.createElement('li');
@@ -269,25 +345,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 queuePulse.classList.remove('active');
                 queueList.innerHTML = '';
             }
-        } catch (e) {
-            console.warn('Queue fetch failed:', e);
-        }
+        } catch (e) { console.warn('Queue fetch failed:', e); }
     }
 
-    // ── Utilities ──────────────────────────────────────────────────────────
+    // ── Utilities ─────────────────────────────────────────────────────────
     function escapeHtml(unsafe) {
-        if (!unsafe) return "";
+        if (!unsafe) return '';
         return unsafe.toString()
-             .replace(/&/g, "&amp;")
-             .replace(/</g, "&lt;")
-             .replace(/>/g, "&gt;")
-             .replace(/"/g, "&quot;")
-             .replace(/'/g, "&#039;");
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
-    // ── Bootstrap ──────────────────────────────────────────────────────────
+    // ── Bootstrap ─────────────────────────────────────────────────────────
     loadData();
     loadQueue();
-    setInterval(loadData, 30000);
-    setInterval(loadQueue, 5000);
+    setInterval(loadData,  30000);
+    setInterval(loadQueue,  5000);
 });
