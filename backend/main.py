@@ -47,7 +47,6 @@ class ExclusionRequest(BaseModel):
 @app.get("/api/analyses", response_model=List[AnalysisResponse])
 def get_analyses(limit: int = 50, db: Session = Depends(get_db)):
     results = db.query(AnalysisResult).order_by(AnalysisResult.timestamp.desc()).limit(limit).all()
-    # Format dates
     formatted = []
     for r in results:
         formatted.append(AnalysisResponse(
@@ -60,6 +59,21 @@ def get_analyses(limit: int = 50, db: Session = Depends(get_db)):
             llm_resolution=r.llm_resolution
         ))
     return formatted
+
+@app.delete("/api/analyses/{analysis_id}")
+def delete_analysis(analysis_id: int, db: Session = Depends(get_db)):
+    record = db.query(AnalysisResult).filter(AnalysisResult.id == analysis_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(record)
+    db.commit()
+    return {"status": "ok"}
+
+@app.delete("/api/analyses")
+def delete_all_analyses(db: Session = Depends(get_db)):
+    db.query(AnalysisResult).delete()
+    db.commit()
+    return {"status": "ok", "message": "All analyses cleared"}
 
 @app.post("/api/exclusions")
 def add_exclusion(req: ExclusionRequest, db: Session = Depends(get_db)):

@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorFeed = document.getElementById('error-feed');
     const loading = document.getElementById('loading');
     const refreshBtn = document.getElementById('refresh-btn');
+    const clearAllBtn = document.getElementById('clear-all-btn');
 
     // Queue panel
     const queuePanel = document.getElementById('queue-panel');
@@ -26,6 +27,31 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => activeExclModal.classList.add('hidden'));
     });
 
+    // ── Markdown renderer ──────────────────────────────────────────────────
+    function renderMarkdown(text) {
+        if (!text) return '';
+        let html = escapeHtml(text);
+        // bold: **text**
+        html = html.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+        // italic: *text* (single, not already consumed above)
+        html = html.replace(/(?<!\*)\*(?!\*)([\s\S]+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+        // headings: lines starting with ## or #
+        html = html.replace(/^#{2}\s+(.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^#{1}\s+(.+)$/gm, '<h3>$1</h3>');
+        // numbered list items
+        html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+        // bullet points
+        html = html.replace(/^[\*\-]\s+(.+)$/gm, '<li>$1</li>');
+        // Wrap consecutive <li> in <ul>
+        html = html.replace(/(<li>[\s\S]*?<\/li>)(\s*<li>)/g, '$1$2');
+        html = html.replace(/((?:<li>.*<\/li>\s*)+)/g, '<ul>$1</ul>');
+        // line breaks
+        html = html.replace(/\n\n/g, '</p><p>');
+        html = html.replace(/\n/g, '<br>');
+        return `<p>${html}</p>`;
+    }
+
+    // ── Data loading ───────────────────────────────────────────────────────
     async function loadData() {
         loading.classList.remove('hidden');
         errorFeed.classList.add('hidden');
@@ -36,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             
             if (data.length === 0) {
-                loading.textContent = "No errors detected recently.";
+                loading.textContent = "No errors detected — all quiet!";
                 return;
             }
 
@@ -53,15 +79,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ── Card builder ───────────────────────────────────────────────────────
     function createErrorCard(data) {
         const div = document.createElement('div');
         div.className = 'glass-card';
+        div.dataset.id = data.id;
         
         const date = new Date(data.timestamp).toLocaleString();
         
         div.innerHTML = `
             <div class="card-header">
-                <span class="container-badge">${data.container_name}</span>
+                <span class="container-badge">${escapeHtml(data.container_name)}</span>
                 <span class="timestamp">${date}</span>
             </div>
             
@@ -71,26 +99,35 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="context-box">${escapeHtml(data.context_log)}</div>
 
             <div class="section-title">LLM Investigation</div>
-            <div class="content-box llm-investigation">${escapeHtml(data.llm_investigation)}</div>
+            <div class="content-box llm-investigation">${renderMarkdown(data.llm_investigation)}</div>
             
             <div class="section-title">LLM Resolution</div>
-            <div class="content-box llm-resolution">${escapeHtml(data.llm_resolution)}</div>
+            <div class="content-box llm-resolution">${renderMarkdown(data.llm_resolution)}</div>
 
             <div class="card-actions">
-                <button class="btn danger exclude-action-btn" data-cname="${data.container_name}" data-line="${escapeHtml(data.error_line)}">Exclude Pattern</button>
+                <button class="btn resolve resolve-btn">✓ Resolve</button>
+                <button class="btn danger exclude-action-btn">Exclude Pattern</button>
             </div>
         `;
 
-        // Attach event
-        const btn = div.querySelector('.exclude-action-btn');
-        btn.addEventListener('click', () => {
-            exclContainerInput.value = data.container_name;
-            // Provide a good default substring for exclusion
-            let line = data.error_line;
-            // Trim timestamps if present
-            if(line.includes("Z ")) {
-                line = line.split("Z ")[1];
+        // Resolve button
+        div.querySelector('.resolve-btn').addEventListener('click', async () => {
+            try {
+                await fetch(`/api/analyses/${data.id}`, { method: 'DELETE' });
+                div.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                div.style.opacity = '0';
+                div.style.transform = 'translateY(-8px)';
+                setTimeout(() => div.remove(), 300);
+            } catch (e) {
+                console.error('Failed to resolve:', e);
             }
+        });
+
+        // Exclude button
+        div.querySelector('.exclude-action-btn').addEventListener('click', () => {
+            exclContainerInput.value = data.container_name;
+            let line = data.error_line;
+            if (line.includes("Z ")) line = line.split("Z ")[1];
             exclPatternInput.value = line;
             exclModal.classList.remove('hidden');
         });
@@ -98,10 +135,26 @@ document.addEventListener('DOMContentLoaded', () => {
         return div;
     }
 
+    // ── Clear All ──────────────────────────────────────────────────────────
+    clearAllBtn.addEventListener('click', async () => {
+        if (!confirm('Clear all analyzed errors? This cannot be undone.')) return;
+        try {
+            await fetch('/api/analyses', { method: 'DELETE' });
+            errorFeed.innerHTML = '';
+            errorFeed.classList.add('hidden');
+            loading.classList.remove('hidden');
+            loading.textContent = "No errors detected — all quiet!";
+        } catch (e) {
+            alert('Failed to clear errors.');
+            console.error(e);
+        }
+    });
+
+    // ── Exclusion save ─────────────────────────────────────────────────────
     saveExclBtn.addEventListener('click', async () => {
         const cname = exclContainerInput.value;
         const pattern = exclPatternInput.value;
-        if(!pattern) return;
+        if (!pattern) return;
 
         try {
             await fetch('/api/exclusions', {
@@ -117,18 +170,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ── View Exclusions ────────────────────────────────────────────────────
     document.getElementById('view-exclusions-btn').addEventListener('click', async () => {
         try {
             const res = await fetch('/api/exclusions');
             const data = await res.json();
             
             exclusionsList.innerHTML = '';
-            if(data.length === 0) {
+            if (data.length === 0) {
                 exclusionsList.innerHTML = '<li>No active exclusions.</li>';
             } else {
                 data.forEach(ex => {
                     const li = document.createElement('li');
-                    li.innerHTML = `<strong>${ex.container_name}</strong>: ${escapeHtml(ex.pattern)}`;
+                    li.innerHTML = `<strong>${escapeHtml(ex.container_name)}</strong>: ${escapeHtml(ex.pattern)}`;
                     exclusionsList.appendChild(li);
                 });
             }
@@ -140,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     refreshBtn.addEventListener('click', loadData);
 
+    // ── Queue polling ──────────────────────────────────────────────────────
     async function loadQueue() {
         try {
             const res = await fetch('/api/queue');
@@ -147,7 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const total = data.total || 0;
             const recent = data.recent || [];
 
-            // Toggle panel visibility
             if (total > 0 || recent.length > 0) {
                 queuePanel.classList.remove('hidden');
                 queuePanel.classList.add('active');
@@ -159,16 +213,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 queuePulse.classList.remove('active');
                 queueCount.classList.add('empty');
                 queueCount.textContent = '0 pending';
-                // Keep panel visible for 5 more seconds after draining
-                // then hide
                 setTimeout(() => {
-                    if (queueList.children.length === 0) {
+                    if (!queuePanel.classList.contains('active')) {
                         queuePanel.classList.add('hidden');
                     }
                 }, 5000);
             }
 
-            // Render last 5 items
             queueList.innerHTML = '';
             recent.forEach(item => {
                 const li = document.createElement('li');
@@ -180,8 +231,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ── Utilities ──────────────────────────────────────────────────────────
     function escapeHtml(unsafe) {
-        if(!unsafe) return "";
+        if (!unsafe) return "";
         return unsafe.toString()
              .replace(/&/g, "&amp;")
              .replace(/</g, "&lt;")
@@ -190,11 +242,9 @@ document.addEventListener('DOMContentLoaded', () => {
              .replace(/'/g, "&#039;");
     }
 
-    // Initial load
+    // ── Bootstrap ──────────────────────────────────────────────────────────
     loadData();
     loadQueue();
-    // Auto refresh every 30 seconds
     setInterval(loadData, 30000);
-    // Queue status every 5 seconds
     setInterval(loadQueue, 5000);
 });
