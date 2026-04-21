@@ -80,29 +80,65 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Card builder ───────────────────────────────────────────────────────
+    function getSummaryMeta(summary) {
+        const text = (summary || '').toUpperCase();
+        if (text.startsWith('NEEDS INTERVENTION')) {
+            return { cls: 'summary-intervention', label: 'NEEDS INTERVENTION', icon: '⚠' };
+        }
+        if (text.startsWith('LIKELY TRANSIENT')) {
+            return { cls: 'summary-transient', label: 'LIKELY TRANSIENT', icon: '✓' };
+        }
+        return { cls: 'summary-unknown', label: 'ANALYZED', icon: '·' };
+    }
+
+    function makeSummaryBody(summary) {
+        if (!summary) return '<em>No summary available.</em>';
+        // Strip the leading status prefix to avoid duplication
+        const clean = summary.replace(/^(NEEDS INTERVENTION|LIKELY TRANSIENT)\s*:\s*/i, '');
+        return escapeHtml(clean);
+    }
+
+    function createCollapsible(titleHtml, contentHtml, extraClass = '') {
+        const wrap = document.createElement('div');
+        wrap.className = 'collapsible-section';
+        wrap.innerHTML = `
+            <button class="collapsible-toggle${extraClass ? ' ' + extraClass : ''}">
+                <span class="toggle-arrow">▶</span>${titleHtml}
+            </button>
+            <div class="collapsible-body hidden">${contentHtml}</div>
+        `;
+        wrap.querySelector('.collapsible-toggle').addEventListener('click', () => {
+            const body = wrap.querySelector('.collapsible-body');
+            const arrow = wrap.querySelector('.toggle-arrow');
+            body.classList.toggle('hidden');
+            arrow.textContent = body.classList.contains('hidden') ? '▶' : '▼';
+        });
+        return wrap;
+    }
+
     function createErrorCard(data) {
         const div = document.createElement('div');
         div.className = 'glass-card';
         div.dataset.id = data.id;
-        
+
         const date = new Date(data.timestamp).toLocaleString();
-        
+        const meta = getSummaryMeta(data.llm_executive_summary);
+
         div.innerHTML = `
             <div class="card-header">
                 <span class="container-badge">${escapeHtml(data.container_name)}</span>
                 <span class="timestamp">${date}</span>
             </div>
-            
-            <div class="error-snippet">${escapeHtml(data.error_line)}</div>
-            
-            <div class="section-title">Context (+/- 100ms)</div>
-            <div class="context-box">${escapeHtml(data.context_log)}</div>
 
-            <div class="section-title">LLM Investigation</div>
-            <div class="content-box llm-investigation">${renderMarkdown(data.llm_investigation)}</div>
-            
-            <div class="section-title">LLM Resolution</div>
-            <div class="content-box llm-resolution">${renderMarkdown(data.llm_resolution)}</div>
+            <div class="error-snippet">${escapeHtml(data.error_line)}</div>
+
+            <div class="executive-summary ${meta.cls}">
+                <span class="exec-icon">${meta.icon}</span>
+                <span class="exec-label">${meta.label}</span>
+                <span class="exec-body">${makeSummaryBody(data.llm_executive_summary)}</span>
+            </div>
+
+            <div class="collapsibles-container"></div>
 
             <div class="card-actions">
                 <button class="btn resolve resolve-btn">✓ Resolve</button>
@@ -110,7 +146,21 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        // Resolve button
+        const container = div.querySelector('.collapsibles-container');
+
+        container.appendChild(createCollapsible(
+            'Context <span class="toggle-hint">(+/- 100ms)</span>',
+            `<div class="context-box">${escapeHtml(data.context_log)}</div>`
+        ));
+        container.appendChild(createCollapsible(
+            'Investigation',
+            `<div class="content-box llm-investigation">${renderMarkdown(data.llm_investigation)}</div>`
+        ));
+        container.appendChild(createCollapsible(
+            'Resolution',
+            `<div class="content-box llm-resolution">${renderMarkdown(data.llm_resolution)}</div>`
+        ));
+
         div.querySelector('.resolve-btn').addEventListener('click', async () => {
             try {
                 await fetch(`/api/analyses/${data.id}`, { method: 'DELETE' });
@@ -123,7 +173,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Exclude button
         div.querySelector('.exclude-action-btn').addEventListener('click', () => {
             exclContainerInput.value = data.container_name;
             let line = data.error_line;
@@ -202,30 +251,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const total = data.total || 0;
             const recent = data.recent || [];
 
-            if (total > 0 || recent.length > 0) {
+            if (total > 0) {
                 queuePanel.classList.remove('hidden');
                 queuePanel.classList.add('active');
                 queuePulse.classList.add('active');
                 queueCount.classList.remove('empty');
                 queueCount.textContent = `${total} pending`;
+                queueList.innerHTML = '';
+                recent.forEach(item => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span class="q-container">${escapeHtml(item.container)}</span><span class="q-line">${escapeHtml(item.line)}</span>`;
+                    queueList.appendChild(li);
+                });
             } else {
+                queuePanel.classList.add('hidden');
                 queuePanel.classList.remove('active');
                 queuePulse.classList.remove('active');
-                queueCount.classList.add('empty');
-                queueCount.textContent = '0 pending';
-                setTimeout(() => {
-                    if (!queuePanel.classList.contains('active')) {
-                        queuePanel.classList.add('hidden');
-                    }
-                }, 5000);
+                queueList.innerHTML = '';
             }
-
-            queueList.innerHTML = '';
-            recent.forEach(item => {
-                const li = document.createElement('li');
-                li.innerHTML = `<span class="q-container">${escapeHtml(item.container)}</span><span class="q-line">${escapeHtml(item.line)}</span>`;
-                queueList.appendChild(li);
-            });
         } catch (e) {
             console.warn('Queue fetch failed:', e);
         }

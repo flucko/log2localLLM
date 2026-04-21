@@ -70,14 +70,15 @@ def fetch_context_and_analyze(container_name, container_id, error_line):
         context = f"Could not fetch context: {e}"
         
     print(f"[LLM] Analyzing error from {container_name}...")
-    investigation, resolution = analyze_error(container_name, error_line, context)
-    
+    investigation, resolution, executive_summary = analyze_error(container_name, error_line, context)
+
     db = SessionLocal()
     try:
         ar = AnalysisResult(
             container_name=container_name,
             error_line=error_line,
             context_log=context,
+            llm_executive_summary=executive_summary,
             llm_investigation=investigation,
             llm_resolution=resolution
         )
@@ -107,11 +108,14 @@ def llm_queue_worker():
 
 def get_queue_status():
     """Returns the current queue status for the API."""
+    total = llm_queue.qsize()
     with recent_queue_lock:
+        if total == 0:
+            recent_queue_items.clear()
         preview = list(recent_queue_items)
     return {
-        "total": llm_queue.qsize(),
-        "recent": preview  # List of {"container": ..., "line": ...}
+        "total": total,
+        "recent": preview
     }
 
 def monitor_container(container):

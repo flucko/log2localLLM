@@ -19,7 +19,8 @@ class AnalysisResult(Base):
     container_name = Column(String, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
     error_line = Column(Text)
-    context_log = Column(Text)       # The +/- 100ms context
+    context_log = Column(Text)
+    llm_executive_summary = Column(Text, default="")
     llm_investigation = Column(Text)
     llm_resolution = Column(Text)
 
@@ -31,6 +32,14 @@ class ExclusionRule(Base):
     pattern = Column(String)  # Simple string match or basic regex
 
 Base.metadata.create_all(bind=engine)
+
+# Migrate: add llm_executive_summary column if it doesn't exist yet
+with engine.connect() as conn:
+    from sqlalchemy import text, inspect
+    cols = [c["name"] for c in inspect(engine).get_columns("analysis_results")]
+    if "llm_executive_summary" not in cols:
+        conn.execute(text("ALTER TABLE analysis_results ADD COLUMN llm_executive_summary TEXT DEFAULT ''"))
+        conn.commit()
 
 def get_db():
     db = SessionLocal()

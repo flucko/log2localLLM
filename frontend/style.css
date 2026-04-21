@@ -206,6 +206,105 @@ main {
 .content-box ul { padding-left: 1.25rem; margin-bottom: 0.5rem; }
 .content-box li { margin-bottom: 0.25rem; }
 
+/* Executive Summary */
+.executive-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin: 0.75rem 0 0.5rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.summary-intervention {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.summary-transient {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.summary-unknown {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.exec-icon {
+    flex-shrink: 0;
+    font-size: 1rem;
+    margin-top: 0.1rem;
+}
+.summary-intervention .exec-icon { color: #ef4444; }
+.summary-transient .exec-icon { color: #10b981; }
+.summary-unknown .exec-icon { color: #94a3b8; }
+
+.exec-label {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.1rem;
+}
+.summary-intervention .exec-label { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.summary-transient .exec-label    { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+.summary-unknown .exec-label      { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+.exec-body {
+    color: var(--text-muted);
+    flex: 1;
+}
+
+/* Collapsible sections */
+.collapsibles-container {
+    margin-top: 0.5rem;
+}
+
+.collapsible-section {
+    border-top: 1px solid var(--border-color);
+}
+
+.collapsible-toggle {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.6rem 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.15s;
+}
+.collapsible-toggle:hover { color: var(--text-main); }
+
+.toggle-arrow {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    transition: color 0.15s;
+}
+.collapsible-toggle:hover .toggle-arrow { color: var(--text-main); }
+
+.toggle-hint {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.75rem;
+}
+
+.collapsible-body {
+    padding-bottom: 0.75rem;
+}
+
 .context-box {
     max-height: 150px;
     overflow-y: auto;

@@ -31,9 +31,10 @@ def get_db():
 class AnalysisResponse(BaseModel):
     id: int
     container_name: str
-    timestamp: str # Using str for simplicity on output
+    timestamp: str
     error_line: str
     context_log: str
+    llm_executive_summary: str
     llm_investigation: str
     llm_resolution: str
 
@@ -55,6 +56,7 @@ def get_analyses(limit: int = 50, db: Session = Depends(get_db)):
             timestamp=r.timestamp.isoformat() + "Z",
             error_line=r.error_line,
             context_log=r.context_log,
+            llm_executive_summary=r.llm_executive_summary or "",
             llm_investigation=r.llm_investigation,
             llm_resolution=r.llm_resolution
         ))
